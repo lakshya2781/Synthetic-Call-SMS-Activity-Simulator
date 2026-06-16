@@ -8,83 +8,82 @@ IST = timezone(timedelta(hours=5, minutes=30))
 def now_ist():
     return datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
-call_logs = []
-sms_logs = []
+# Per-minute stats
+minute_stats = []  # list of {time, calls, sms}
+totals = {"total_calls": 0, "total_sms": 0}
 
-def fake_number():
-    return f"+91-9{random.randint(100000000, 999999999)}"
-
-def generate_activity():
+def generate_minute_stats():
     while True:
-        time.sleep(60)  # every 1 minute, generate a fake event
+        time.sleep(60)  # every 1 minute
 
-        # Fake call record
-        call_logs.append({
+        calls_this_min = random.randint(5, 50)
+        sms_this_min = random.randint(20, 200)
+
+        totals["total_calls"] += calls_this_min
+        totals["total_sms"] += sms_this_min
+
+        minute_stats.append({
             "time": now_ist(),
-            "from": fake_number(),
-            "to": fake_number(),
-            "duration_sec": random.randint(5, 600),
-            "status": random.choice(["Completed", "Missed", "Rejected"])
+            "calls": calls_this_min,
+            "sms": sms_this_min
         })
-        if len(call_logs) > 30:
-            call_logs.pop(0)
+        if len(minute_stats) > 30:
+            minute_stats.pop(0)
 
-        # Fake SMS record
-        sms_logs.append({
-            "time": now_ist(),
-            "from": fake_number(),
-            "to": fake_number(),
-            "length_chars": random.randint(5, 160),
-            "status": random.choice(["Delivered", "Failed", "Pending"])
-        })
-        if len(sms_logs) > 30:
-            sms_logs.pop(0)
-
-        print(f"[{now_ist()}] Generated 1 fake call + 1 fake SMS", flush=True)
+        print(f"[{now_ist()}] Calls: {calls_this_min} | SMS: {sms_this_min}", flush=True)
 
 @app.route("/")
 def home():
-    call_rows = "".join(
-        f"<tr><td>{c['time']}</td><td>{c['from']}</td><td>{c['to']}</td><td>{c['duration_sec']}s</td><td>{c['status']}</td></tr>"
-        for c in reversed(call_logs[-10:])
+    rows = "".join(
+        f"<tr><td>{m['time']}</td><td>{m['calls']}</td><td>{m['sms']}</td></tr>"
+        for m in reversed(minute_stats[-15:])
     )
-    sms_rows = "".join(
-        f"<tr><td>{s['time']}</td><td>{s['from']}</td><td>{s['to']}</td><td>{s['length_chars']} chars</td><td>{s['status']}</td></tr>"
-        for s in reversed(sms_logs[-10:])
-    )
+
+    last = minute_stats[-1] if minute_stats else {"calls": 0, "sms": 0}
 
     return f"""
     <html>
-    <head><title>Call & SMS Simulator</title><meta http-equiv="refresh" content="15"></head>
+    <head><title>CPaaS Usage Monitor</title><meta http-equiv="refresh" content="20"></head>
     <body style="font-family:monospace; background:#111; color:#0f0; padding:30px">
-        <h2>📞 Synthetic Call & SMS Activity Simulator</h2>
-        <p style="color:#aaa">⚠️ All data below is randomly generated / fake — not real telecom data</p>
+        <h2>📡 CPaaS Usage Monitor (Simulated)</h2>
+        <p style="color:#aaa">⚠️ Simulated data — no real CPaaS account connected yet</p>
 
-        <h3>📱 Recent Fake Calls</h3>
+        <div style="display:flex; gap:40px; margin:20px 0">
+            <div>
+                <p>📞 Calls (last minute)</p>
+                <h1 style="color:lime">{last['calls']}</h1>
+            </div>
+            <div>
+                <p>💬 SMS (last minute)</p>
+                <h1 style="color:cyan">{last['sms']}</h1>
+            </div>
+            <div>
+                <p>📊 Total Calls (since start)</p>
+                <h1 style="color:yellow">{totals['total_calls']}</h1>
+            </div>
+            <div>
+                <p>📊 Total SMS (since start)</p>
+                <h1 style="color:orange">{totals['total_sms']}</h1>
+            </div>
+        </div>
+
+        <h3>📋 Per-Minute Log</h3>
         <table style="border-collapse:collapse; width:100%; color:#0f0">
-            <tr><th>Time</th><th>From</th><th>To</th><th>Duration</th><th>Status</th></tr>
-            {call_rows}
-        </table>
-
-        <h3>💬 Recent Fake SMS</h3>
-        <table style="border-collapse:collapse; width:100%; color:#0ff">
-            <tr><th>Time</th><th>From</th><th>To</th><th>Length</th><th>Status</th></tr>
-            {sms_rows}
+            <tr><th>Time (IST)</th><th>Calls</th><th>SMS</th></tr>
+            {rows}
         </table>
 
         <br>
-        <a href="/api/calls" style="color:cyan">📡 Calls JSON</a> |
-        <a href="/api/sms" style="color:cyan">📡 SMS JSON</a>
+        <a href="/api" style="color:cyan">📡 JSON API</a>
     </body></html>"""
 
-@app.route("/api/calls")
-def api_calls():
-    return jsonify(call_logs)
-
-@app.route("/api/sms")
-def api_sms():
-    return jsonify(sms_logs)
+@app.route("/api")
+def api():
+    return jsonify({
+        "totals": totals,
+        "per_minute": minute_stats
+    })
 
 if __name__ == "__main__":
-    threading.Thread(target=generate_activity, daemon=True).start()
+    threading.Thread(target=generate_minute_stats, daemon=True).start()
     app.run(host="0.0.0.0", port=10000, threaded=True)
