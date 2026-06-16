@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import threading, time, random, datetime, os
 from datetime import timezone, timedelta
 import psycopg2
@@ -10,6 +10,7 @@ def now_ist():
     return datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+DBVIEW_PASSWORD = os.environ.get("DBVIEW_PASSWORD", "Lakshya2781")
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -95,6 +96,7 @@ def home():
         <h3>📋 Per-Minute Log</h3>
         <table><tr><th>Time (IST)</th><th>Calls</th><th>SMS</th></tr>
         <tbody id="rows"><tr><td colspan="3">loading...</td></tr></tbody></table>
+        <p><a href="/dbview" style="color:cyan">🗄️ View Database</a></p>
         <script>
         async function updateData() {
             const res = await fetch('/api');
@@ -118,8 +120,61 @@ def api():
     per_minute, totals = get_state()
     return jsonify({"totals": totals, "per_minute": per_minute})
 
+@app.route("/dbview")
+def dbview():
+    provided_password = request.args.get("password", "")
+    if provided_password != DBVIEW_PASSWORD:
+        return """
+        <html>
+        <head><title>Locked</title></head>
+        <body style="font-family:monospace; background:#111; color:#0f0; padding:60px; text-align:center;">
+            <h2>🔒 Access Restricted</h2>
+            <p>Add ?password=YOUR_PASSWORD to the URL to view this page.</p>
+        </body></html>
+        """, 401
+
+    conn = get_db()
+    cur = conn.cursor()
+    sections = []
+
+    cur.execute("SELECT * FROM cpaas_totals")
+    cols = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+    sections.append(("cpaas_totals", cols, rows))
+
+    cur.execute("SELECT * FROM cpaas_minute_stats ORDER BY id DESC LIMIT 15")
+    cols = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+    sections.append(("cpaas_minute_stats", cols, rows))
+
+    cur.close()
+    conn.close()
+
+    html = """
+    <html>
+    <head>
+        <title>Database Viewer</title>
+        <style>
+            body { font-family:monospace; background:#111; color:#0f0; padding:30px; }
+            h3 { color:cyan; margin-top:30px; }
+            table { border-collapse:collapse; width:100%; margin-bottom:10px; }
+            td, th { padding:6px 10px; text-align:left; border-bottom:1px solid #333; font-size:13px; }
+            th { color:yellow; }
+        </style>
+    </head>
+    <body>
+        <h2>🗄️ CPaaS Database Viewer</h2>
+    """
+    for table_name, cols, rows in sections:
+        html += f"<h3>📋 {table_name} ({len(rows)} rows shown)</h3>"
+        html += "<table><tr>" + "".join(f"<th>{c}</th>" for c in cols) + "</tr>"
+        for row in rows:
+            html += "<tr>" + "".join(f"<td>{val}</td>" for val in row) + "</tr>"
+        html += "</table>"
+    html += "</body></html>"
+    return html
+
 if __name__ == "__main__":
     init_db()
     threading.Thread(target=generate_minute_stats, daemon=True).start()
     app.run(host="0.0.0.0", port=10000, threaded=True)
-    
