@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: activity-simulator
+    name: cpaas-monitor
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: python app.py
